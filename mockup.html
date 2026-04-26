@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>TV直播 Android TV — UI 设计稿 v3</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+
+body {
+  background:#000; color:#fff;
+  font-family:'PingFang SC','Microsoft YaHei',sans-serif;
+  width:1920px; height:1080px;
+  overflow:hidden; transform-origin:top left;
+}
+
+/* ── Player ── */
+.player {
+  position:absolute; inset:0;
+  background:linear-gradient(135deg,#0d0d0d 0%,#1a1a2e 50%,#16213e 100%);
+  display:flex; align-items:center; justify-content:center;
+}
+.player-label {
+  font-size:28px; letter-spacing:6px;
+  color:rgba(255,255,255,0.09); user-select:none;
+}
+
+/* ── Sidebar ── */
+.sidebar {
+  position:absolute; left:0; top:0;
+  width:360px; height:100%;
+  background:rgba(6,6,10,0.96);
+  border-right:3px solid #e60012;
+  display:flex; flex-direction:column;
+  transition:transform .28s cubic-bezier(.4,0,.2,1);
+  z-index:10;
+}
+.sidebar.hidden { transform:translateX(-360px); }
+
+/* ── Source header ── */
+.source-header {
+  padding:22px 22px 0;
+  flex-shrink:0;
+}
+.source-title {
+  font-size:11px; color:rgba(255,255,255,0.3);
+  letter-spacing:2px; margin-bottom:12px;
+  text-transform:uppercase;
+}
+.source-tabs {
+  display:flex; gap:8px; flex-wrap:wrap;
+}
+.src-btn {
+  font-size:13px; font-weight:600;
+  padding:7px 16px; border-radius:4px;
+  cursor:pointer; border:none;
+  font-family:inherit; letter-spacing:.3px;
+  transition:all .15s;
+  outline:none;
+}
+.src-btn.active {
+  background:#e60012; color:#fff;
+}
+.src-btn:not(.active) {
+  background:rgba(255,255,255,0.07);
+  color:rgba(255,255,255,0.55);
+  border:1px solid rgba(255,255,255,0.15);
+}
+.src-btn:not(.active):hover {
+  background:rgba(255,255,255,0.12);
+  color:rgba(255,255,255,0.8);
+}
+
+/* source divider */
+.src-divider {
+  height:1px; background:rgba(255,255,255,0.07);
+  margin:16px 0 0;
+}
+
+/* channel count */
+.ch-count {
+  padding:8px 22px 6px;
+  font-size:11px; color:rgba(255,255,255,0.25);
+  flex-shrink:0;
+}
+
+/* ── Channel list ── */
+.channel-list {
+  flex:1; overflow-y:auto; overflow-x:hidden;
+  padding:4px 0; scrollbar-width:none;
+}
+.channel-list::-webkit-scrollbar { display:none; }
+
+.ch-item {
+  display:flex; align-items:center;
+  padding:13px 22px 13px 26px;
+  cursor:pointer; position:relative; gap:14px;
+  transition:background .10s;
+}
+.ch-item:hover { background:rgba(230,0,18,.08); }
+.ch-item.focused {
+  background:#e60012;
+}
+.ch-item.focused::before {
+  content:''; position:absolute;
+  left:0; top:0; bottom:0; width:4px; background:#fff;
+}
+
+.ch-num {
+  font-size:11px; font-weight:700;
+  color:#e60012; min-width:56px; flex-shrink:0;
+}
+.ch-item.focused .ch-num { color:rgba(255,255,255,.75); }
+
+.ch-body { flex:1; min-width:0; }
+.ch-name { font-size:17px; font-weight:600; white-space:nowrap; }
+.ch-sub  { font-size:11px; color:rgba(255,255,255,.35); margin-top:2px; }
+.ch-item.focused .ch-sub { color:rgba(255,255,255,.65); }
+
+.ch-dot {
+  width:7px; height:7px; border-radius:50%;
+  background:rgba(255,255,255,.15); flex-shrink:0;
+}
+.ch-item.focused .ch-dot { background:rgba(255,255,255,.45); }
+.ch-item.active .ch-dot  { background:#e60012; }
+.ch-item.focused.active .ch-dot { background:#fff; }
+
+/* ── Footer hints ── */
+.sidebar-footer {
+  padding:12px 26px 16px;
+  border-top:1px solid rgba(255,255,255,.07); flex-shrink:0;
+}
+.hints { display:flex; gap:12px; flex-wrap:wrap; }
+.hint-item { font-size:11px; color:rgba(255,255,255,.25); }
+.hint-item kbd {
+  background:rgba(255,255,255,.07);
+  border:1px solid rgba(255,255,255,.14);
+  border-radius:3px; padding:1px 6px;
+  font-size:11px; color:rgba(255,255,255,.45);
+  font-family:inherit;
+}
+
+/* ── Now-playing bar ── */
+.now-bar {
+  position:absolute; bottom:0; left:0; right:0; height:90px;
+  background:linear-gradient(transparent,rgba(0,0,0,.90));
+  display:flex; align-items:flex-end;
+  padding:0 44px 18px; z-index:5;
+  transition:left .28s cubic-bezier(.4,0,.2,1);
+  pointer-events:none;
+}
+.now-bar.shifted { left:360px; }
+
+.live-badge {
+  background:#e60012; color:#fff; font-weight:700; font-size:12px;
+  padding:4px 10px; border-radius:3px; letter-spacing:1px;
+  margin-right:16px; flex-shrink:0;
+  animation:pulse 2s infinite;
+}
+@keyframes pulse { 0%,100%{ opacity:1; } 50%{ opacity:.55; } }
+
+/* source pill in now-bar */
+.now-src-pill {
+  font-size:11px; padding:3px 10px; border-radius:10px;
+  background:rgba(230,0,18,.25); color:#ff6677;
+  border:1px solid rgba(230,0,18,.4);
+  margin-right:12px; flex-shrink:0; white-space:nowrap;
+}
+
+.now-channel-info { display:flex; align-items:baseline; flex:1; min-width:0; gap:0; }
+.now-name { font-size:21px; font-weight:600; white-space:nowrap; }
+.now-sep  { font-size:14px; color:rgba(255,255,255,.28); margin:0 10px; }
+.now-prog { font-size:14px; color:rgba(255,255,255,.42); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.spacer   { flex:1; }
+.now-time {
+  font-size:25px; font-weight:300; letter-spacing:3px;
+  color:rgba(255,255,255,.58); flex-shrink:0;
+  font-variant-numeric:tabular-nums;
+}
+
+/* ── Menu hint ── */
+.menu-hint {
+  position:absolute; top:24px; right:28px;
+  font-size:12px; color:rgba(255,255,255,.18);
+  z-index:5; pointer-events:none;
+}
+.menu-hint kbd {
+  background:rgba(255,255,255,.07);
+  border:1px solid rgba(255,255,255,.15);
+  border-radius:4px; padding:2px 9px;
+  font-size:12px; color:rgba(255,255,255,.38);
+  font-family:inherit; margin-left:6px;
+}
+
+/* ── Demo toggle ── */
+#toggleBtn {
+  position:absolute; top:24px; left:378px;
+  background:rgba(230,0,18,.82); color:#fff;
+  border:none; padding:8px 20px; border-radius:5px;
+  font-size:13px; cursor:pointer; z-index:20;
+  font-family:inherit; transition:left .28s cubic-bezier(.4,0,.2,1);
+}
+#toggleBtn.no-sidebar { left:24px; }
+</style>
+</head>
+<body>
+
+<div class="player">
+  <div class="player-label">▶ &nbsp;&nbsp; WebView &nbsp;—&nbsp; 直播</div>
+</div>
+
+<!-- Sidebar -->
+<div class="sidebar" id="sidebar">
+
+  <!-- Source header -->
+  <div class="source-header">
+    <div class="source-title">选择源头</div>
+    <div class="source-tabs" id="sourceTabs"></div>
+    <div class="src-divider"></div>
+  </div>
+
+  <div class="ch-count" id="chCount"></div>
+
+  <div class="channel-list" id="channelList"></div>
+
+  <div class="sidebar-footer">
+    <div class="hints">
+      <div class="hint-item"><kbd>↑</kbd><kbd>↓</kbd> 选台</div>
+      <div class="hint-item"><kbd>←</kbd><kbd>→</kbd> 换源</div>
+      <div class="hint-item"><kbd>OK</kbd> 播放</div>
+      <div class="hint-item"><kbd>MENU</kbd> 关闭</div>
+    </div>
+  </div>
+</div>
+
+<!-- Now-playing bar -->
+<div class="now-bar shifted" id="nowBar">
+  <div class="live-badge">直播</div>
+  <div class="now-src-pill" id="nowSrcPill">CCTV官方</div>
+  <div class="now-channel-info">
+    <div class="now-name" id="nowName">CCTV-1</div>
+    <div class="now-sep">·</div>
+    <div class="now-prog" id="nowProg">综合频道</div>
+  </div>
+  <div class="spacer"></div>
+  <div class="now-time" id="clock">--:--:--</div>
+</div>
+
+<div class="menu-hint">遥控菜单键 <kbd>MENU</kbd></div>
+<button id="toggleBtn" onclick="toggleSidebar()">☰ &nbsp;频道列表</button>
+
+<script>
+// ── 每个源头有自己独立的频道列表 ──────────────────────────────────────────
+const SOURCES = [
+  {
+    label: 'CCTV官方',
+    channels: [
+      { num:'CCTV-1',  name:'综合频道',  sub:'新闻·综合',  url:'https://tv.cctv.com/live/cctv1/m/index.shtml' },
+      { num:'CCTV-2',  name:'财经频道',  sub:'财经·资讯',  url:'https://tv.cctv.com/live/cctv2/m/index.shtml' },
+      { num:'CCTV-3',  name:'综艺频道',  sub:'文娱·综艺',  url:'https://tv.cctv.com/live/cctv3/m/index.shtml' },
+      { num:'CCTV-4',  name:'中文国际',  sub:'国际·中文',  url:'https://tv.cctv.com/live/cctv4/m/index.shtml' },
+      { num:'CCTV-5',  name:'体育频道',  sub:'体育·赛事',  url:'https://tv.cctv.com/live/cctv5/m/index.shtml' },
+      { num:'CCTV-5+', name:'体育赛事',  sub:'足球·篮球',  url:'https://tv.cctv.com/live/cctv5plus/m/index.shtml' },
+      { num:'CCTV-6',  name:'电影频道',  sub:'电影·影视',  url:'https://tv.cctv.com/live/cctv6/m/index.shtml' },
+      { num:'CCTV-7',  name:'国防军事',  sub:'军事·科技',  url:'https://tv.cctv.com/live/cctv7/m/index.shtml' },
+      { num:'CCTV-8',  name:'电视剧频道',sub:'国产·剧集',  url:'https://tv.cctv.com/live/cctv8/m/index.shtml' },
+      { num:'CCTV-9',  name:'纪录频道',  sub:'纪录·探索',  url:'https://tv.cctv.com/live/cctv9/m/index.shtml' },
+      { num:'CCTV-10', name:'科教频道',  sub:'科技·教育',  url:'https://tv.cctv.com/live/cctv10/m/index.shtml' },
+      { num:'CCTV-11', name:'戏曲频道',  sub:'京剧·戏曲',  url:'https://tv.cctv.com/live/cctv11/m/index.shtml' },
+      { num:'CCTV-12', name:'社会与法',  sub:'法制·社会',  url:'https://tv.cctv.com/live/cctv12/m/index.shtml' },
+      { num:'CCTV-13', name:'新闻频道',  sub:'时事·新闻',  url:'https://tv.cctv.com/live/cctv13/m/index.shtml' },
+      { num:'CCTV-14', name:'少儿频道',  sub:'动画·少儿',  url:'https://tv.cctv.com/live/cctv14/m/index.shtml' },
+      { num:'CCTV-15', name:'音乐频道',  sub:'音乐·演出',  url:'https://tv.cctv.com/live/cctv15/m/index.shtml' },
+      { num:'CCTV-16', name:'奥林匹克',  sub:'体育·奥运',  url:'https://tv.cctv.com/live/cctv16/m/index.shtml' },
+      { num:'CCTV-17', name:'农业农村',  sub:'农业·乡村',  url:'https://tv.cctv.com/live/cctv17/m/index.shtml' },
+    ]
+  },
+  {
+    label: 'yibababa',
+    channels: [
+      { num:'CCTV-1',  name:'综合',  sub:'yibababa.com', url:'https://yibababa.com/tv/cctv1/' },
+      { num:'CCTV-2',  name:'财经',  sub:'yibababa.com', url:'https://yibababa.com/tv/cctv2/' },
+      { num:'CCTV-3',  name:'综艺',  sub:'yibababa.com', url:'https://yibababa.com/tv/cctv3/' },
+      { num:'CCTV-4',  name:'中文国际', sub:'yibababa.com', url:'https://yibababa.com/tv/cctv4/' },
+      { num:'CCTV-5',  name:'体育',  sub:'yibababa.com', url:'https://yibababa.com/tv/cctv5/' },
+      { num:'CCTV-5+', name:'体育赛事', sub:'yibababa.com', url:'https://yibababa.com/tv/cctv5plus/' },
+      { num:'CCTV-6',  name:'电影',  sub:'yibababa.com', url:'https://yibababa.com/tv/cctv6/' },
+      { num:'CCTV-7',  name:'国防军事', sub:'yibababa.com', url:'https://yibababa.com/tv/cctv7/' },
+      { num:'CCTV-8',  name:'电视剧', sub:'yibababa.com', url:'https://yibababa.com/tv/cctv8/' },
+      { num:'CCTV-9',  name:'纪录',  sub:'yibababa.com', url:'https://yibababa.com/tv/cctv9/' },
+      { num:'CCTV-10', name:'科教',  sub:'yibababa.com', url:'https://yibababa.com/tv/cctv10/' },
+      { num:'CCTV-11', name:'戏曲',  sub:'yibababa.com', url:'https://yibababa.com/tv/cctv11/' },
+      { num:'CCTV-12', name:'社会与法', sub:'yibababa.com', url:'https://yibababa.com/tv/cctv12/' },
+      { num:'CCTV-13', name:'新闻',  sub:'yibababa.com', url:'https://yibababa.com/tv/cctv13/' },
+      { num:'CCTV-14', name:'少儿',  sub:'yibababa.com', url:'https://yibababa.com/tv/cctv14/' },
+      { num:'CCTV-15', name:'音乐',  sub:'yibababa.com', url:'https://yibababa.com/tv/cctv15/' },
+      { num:'CCTV-16', name:'奥林匹克', sub:'yibababa.com', url:'https://yibababa.com/tv/cctv16/' },
+      { num:'CCTV-17', name:'农业农村', sub:'yibababa.com', url:'https://yibababa.com/tv/cctv17/' },
+    ]
+  },
+];
+
+let activeSrcIdx = 0;    // which source tab is selected
+let focused      = 0;    // focused channel index within current source
+let activeChIdx  = 0;    // playing channel index
+let activeSrcPlaying = 0; // which source the playing channel came from
+let sidebarOn    = true;
+
+function currentSource() { return SOURCES[activeSrcIdx]; }
+
+// ── Render source tabs ────────────────────────────────────────────────────
+function renderSourceTabs() {
+  document.getElementById('sourceTabs').innerHTML = SOURCES.map((s, i) => `
+    <button class="src-btn${i===activeSrcIdx?' active':''}"
+            onclick="switchSource(${i})">${s.label}</button>
+  `).join('');
+}
+
+// ── Render channel list ───────────────────────────────────────────────────
+function renderChannels() {
+  const chs = currentSource().channels;
+  document.getElementById('chCount').textContent =
+    `${currentSource().label} · 共 ${chs.length} 个频道`;
+
+  document.getElementById('channelList').innerHTML = chs.map((ch, i) => {
+    const isF = i === focused;
+    // "active" only applies if this source+channel matches what's currently playing
+    const isA = i === activeChIdx && activeSrcIdx === activeSrcPlaying;
+    return `
+      <div class="ch-item${isF?' focused':''}${isA?' active':''}"
+           onclick="selectChannel(${i})"
+           onmouseenter="setFocus(${i})">
+        <div class="ch-num">${ch.num}</div>
+        <div class="ch-body">
+          <div class="ch-name">${ch.name}</div>
+          <div class="ch-sub">${ch.sub}</div>
+        </div>
+        <div class="ch-dot"></div>
+      </div>`;
+  }).join('');
+
+  const items = document.querySelectorAll('.ch-item');
+  if (items[focused]) items[focused].scrollIntoView({ block:'nearest', behavior:'smooth' });
+}
+
+function renderAll() { renderSourceTabs(); renderChannels(); }
+
+// ── Switch source ─────────────────────────────────────────────────────────
+function switchSource(idx) {
+  activeSrcIdx = idx;
+  focused = 0;   // reset channel focus when source changes
+  renderAll();
+}
+
+function setFocus(i) { focused = i; renderChannels(); }
+
+// ── Select & play channel ─────────────────────────────────────────────────
+function selectChannel(i) {
+  activeChIdx      = i;
+  activeSrcPlaying = activeSrcIdx;
+  focused          = i;
+
+  const src = currentSource();
+  const ch  = src.channels[i];
+  document.getElementById('nowSrcPill').textContent = src.label;
+  document.getElementById('nowName').textContent    = ch.num;
+  document.getElementById('nowProg').textContent    = ch.name;
+  renderChannels();
+  // Android: webView.loadUrl(ch.url)
+}
+
+function toggleSidebar() {
+  sidebarOn = !sidebarOn;
+  document.getElementById('sidebar').classList.toggle('hidden', !sidebarOn);
+  document.getElementById('nowBar').classList.toggle('shifted', sidebarOn);
+  document.getElementById('toggleBtn').classList.toggle('no-sidebar', !sidebarOn);
+}
+
+// ── Keyboard ──────────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  const consumed = ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Enter','Escape','Backspace'];
+  if (consumed.includes(e.key)) e.preventDefault();
+
+  switch (e.key) {
+    case 'ArrowUp':
+      focused = Math.max(0, focused - 1);
+      if (!sidebarOn) toggleSidebar();
+      renderChannels(); break;
+    case 'ArrowDown':
+      focused = Math.min(currentSource().channels.length - 1, focused + 1);
+      if (!sidebarOn) toggleSidebar();
+      renderChannels(); break;
+    case 'ArrowLeft':
+      if (sidebarOn) {
+        activeSrcIdx = (activeSrcIdx - 1 + SOURCES.length) % SOURCES.length;
+        focused = 0;
+        renderAll();
+      } break;
+    case 'ArrowRight':
+      if (sidebarOn) {
+        activeSrcIdx = (activeSrcIdx + 1) % SOURCES.length;
+        focused = 0;
+        renderAll();
+      } break;
+    case 'Enter':
+      if (sidebarOn) selectChannel(focused);
+      else toggleSidebar();
+      break;
+    case 'Escape': case 'Backspace':
+      toggleSidebar(); break;
+  }
+});
+
+// ── Clock ─────────────────────────────────────────────────────────────────
+(function tick() {
+  document.getElementById('clock').textContent =
+    new Date().toLocaleTimeString('zh-CN', { hour12:false });
+  setTimeout(tick, 1000);
+})();
+
+// ── Scale to window ───────────────────────────────────────────────────────
+function scaleToWindow() {
+  const s = Math.min(window.innerWidth/1920, window.innerHeight/1080);
+  document.body.style.transform = `scale(${s})`;
+  document.body.style.marginLeft = Math.max(0,(window.innerWidth -1920*s)/2)+'px';
+  document.body.style.marginTop  = Math.max(0,(window.innerHeight-1080*s)/2)+'px';
+}
+window.addEventListener('resize', scaleToWindow);
+scaleToWindow();
+
+// Init
+renderAll();
+selectChannel(0);
+</script>
+</body>
+</html>

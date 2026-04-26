@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand -->
+    <color name="accent">#e60012</color>
+    <color name="accent_dim">#40e60012</color>
+    <color name="accent_border">#66e60012</color>
+    <color name="accent_light">#FF6677</color>
+
+    <!-- Backgrounds -->
+    <color name="bg_black">#000000</color>
+    <color name="bg_sidebar">#F5060A0A</color>
+    <color name="bg_channel_focused">#e60012</color>
+
+    <!-- Text -->
+    <color name="text_white">#FFFFFF</color>
+    <color name="text_sub">#6BFFFFFF</color>
+    <color name="text_hint">#4DFFFFFF</color>
+    <color name="text_disabled">#40FFFFFF</color>
+
+    <!-- UI elements -->
+    <color name="divider">#12FFFFFF</color>
+    <color name="ch_num_default">#e60012</color>
+    <color name="ch_num_focused">#BFffffff</color>
+    <color name="ch_dot_default">#26FFFFFF</color>
+    <color name="ch_dot_playing">#e60012</color>
+    <color name="ch_dot_focused">#73FFFFFF</color>
+    <color name="ch_dot_focused_playing">#FFFFFF</color>
+
+    <!-- Source tab -->
+    <color name="src_tab_normal_bg">#12FFFFFF</color>
+    <color name="src_tab_normal_border">#26FFFFFF</color>
+    <color name="src_tab_normal_text">#8CFFFFFF</color>
+
+    <!-- Keep originals for compat -->
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+</resources>

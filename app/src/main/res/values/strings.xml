@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">TV直播</string>
+    <string name="loading">正在加载…</string>
+    <string name="error_load_failed">加载失败，请检查网络</string>
+    <string name="error_retry_hint">按 OK 键重新加载</string>
+    <string name="label_live">直播</string>
+    <string name="hint_menu">遥控菜单键 [MENU]</string>
+    <string name="hint_keys">↑↓ 选台   ←→ 换源   OK 播放   MENU 关闭</string>
+    <string name="label_source_title">选择源头</string>
+    <string name="channel_count_fmt">%1$s · 共 %2$d 个频道</string>
+</resources>
