@@ -21,11 +21,24 @@ object SourceConfig {
         "pagead2.googlesyndication.com"
     )
 
+    private val FAMELACK_DOMAINS = listOf(
+        "famelack.com",
+        "www.famelack.com",
+        "raw.githubusercontent.com",
+        "youtube-nocookie.com",
+        "www.youtube-nocookie.com",
+        "googlevideo.com",
+        "ytimg.com",
+        "cloudfront.net",
+    )
+
     val SOURCES: List<Source> = listOf(
         cctvSource(),
         yibaCctv5Source(),
-        yibaSportSource(),
-        yibaJpSource()
+        famelackJpSource(),
+        famelackCnSource(),
+        famelackUsSource(),
+        famelackUkSource(),
     )
 
     // ── CCTV 官方源 ───────────────────────────────────────────────────────────
@@ -76,27 +89,75 @@ object SourceConfig {
         )
     )
 
-    // ── 英文体育 (yibababa) ───────────────────────────────────────────────────
-    private fun yibaSportSource() = Source(
-        id = "yibababa_sport",
-        label = "英文体育",
-        baseUrl = "https://yibababa.com",
-        jsKey = JsKey.YIBA,
-        allowedDomains = YIBA_DOMAINS,
+    // ── 日本节目 (Famelack) ───────────────────────────────────────────────────
+    private fun famelackJpSource() = Source(
+        id = "famelack_jp",
+        label = "日本节目",
+        baseUrl = "https://famelack.com",
+        jsKey = JsKey.FAMELACK,
+        allowedDomains = FAMELACK_DOMAINS,
         channels = listOf(
-            Channel("y_sport", "Sport", "选择载入更多", "英文体育", "https://yibababa.com/tv/sport/"),
+            Channel(
+                "f_jp",
+                "JP",
+                "选择载入更多",
+                "日本·直播",
+                "https://famelack.com/tv/jp"
+            ),
         )
     )
 
-    // ── 日本频道 (yibababa) ───────────────────────────────────────────────────
-    private fun yibaJpSource() = Source(
-        id = "yibababa_jp",
-        label = "日本频道",
-        baseUrl = "https://yibababa.com",
-        jsKey = JsKey.YIBA,
-        allowedDomains = YIBA_DOMAINS,
+    // ── 中国节目 (Famelack) ───────────────────────────────────────────────────
+    private fun famelackCnSource() = Source(
+        id = "famelack_cn",
+        label = "中国节目",
+        baseUrl = "https://famelack.com",
+        jsKey = JsKey.FAMELACK,
+        allowedDomains = FAMELACK_DOMAINS,
         channels = listOf(
-            Channel("y_jp", "JP", "选择载入更多", "日本频道", "https://yibababa.com/tv/jp/"),
+            Channel(
+                "f_cn",
+                "CN",
+                "选择载入更多",
+                "中国·直播",
+                "https://famelack.com/tv/cn/zRxr2ZAtzWPYCP"
+            ),
+        )
+    )
+
+    // ── 美国节目 (Famelack) ───────────────────────────────────────────────────
+    private fun famelackUsSource() = Source(
+        id = "famelack_us",
+        label = "美国节目",
+        baseUrl = "https://famelack.com",
+        jsKey = JsKey.FAMELACK,
+        allowedDomains = FAMELACK_DOMAINS,
+        channels = listOf(
+            Channel(
+                "f_us",
+                "US",
+                "选择载入更多",
+                "美国·直播",
+                "https://famelack.com/tv/us"
+            ),
+        )
+    )
+
+    // ── 英国节目 (Famelack) ───────────────────────────────────────────────────
+    private fun famelackUkSource() = Source(
+        id = "famelack_uk",
+        label = "英国节目",
+        baseUrl = "https://famelack.com",
+        jsKey = JsKey.FAMELACK,
+        allowedDomains = FAMELACK_DOMAINS,
+        channels = listOf(
+            Channel(
+                "f_uk",
+                "UK",
+                "选择载入更多",
+                "英国·直播",
+                "https://famelack.com/tv/uk"
+            ),
         )
     )
 }

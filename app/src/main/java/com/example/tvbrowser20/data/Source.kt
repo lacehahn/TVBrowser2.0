@@ -15,5 +15,10 @@ object JsKey {
     const val DEFAULT = "default"
     const val CCTV    = "cctv"
     const val YIBA    = "yibababa"
+    const val FAMELACK = "famelack"
     const val NONE    = "none"
+
+    /** Sources that load one page and expose channel list + TVB_select via JS bridge. */
+    fun usesWebChannelList(key: String): Boolean =
+        key == YIBA || key == FAMELACK
 }

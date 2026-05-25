@@ -9,7 +9,10 @@ import android.os.Looper
 import android.util.Log
 import android.view.KeyEvent
 import android.view.View
+import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.view.WindowInsetsController
+import android.webkit.WebChromeClient
 import android.webkit.JavascriptInterface
 import android.webkit.WebSettings
 import android.webkit.WebView
@@ -54,6 +57,9 @@ class MainActivity : AppCompatActivity() {
     private var errorShown     = false
     private var lastBackPressMs = 0L
 
+    private var fullscreenView: View? = null
+    private var famelackManualSidebarOpenUntilMs = 0L
+
     // Per-source web channel lists (keyed by source id)
     private val webChannelsMap = mutableMapOf<String, List<Channel>>()
     private val webPageLoadedSet = mutableSetOf<String>()
@@ -62,15 +68,32 @@ class MainActivity : AppCompatActivity() {
 
     private fun getActiveChannels(): List<Channel> {
         val srcId = currentSourceId()
-        return if (currentJsKey == JsKey.YIBA && webChannelsMap.containsKey(srcId)) {
+        return if (JsKey.usesWebChannelList(currentJsKey) && webChannelsMap.containsKey(srcId)) {
             webChannelsMap[srcId]!!
         } else {
             sources[activeSrcIdx].channels
         }
     }
 
-    private fun isYibaPageLoaded(): Boolean {
-        return currentJsKey == JsKey.YIBA && webPageLoadedSet.contains(currentSourceId())
+    private fun isWebChannelPageLoaded(): Boolean {
+        return JsKey.usesWebChannelList(currentJsKey) && webPageLoadedSet.contains(currentSourceId())
+    }
+
+    private fun setChannelListLoading(show: Boolean, loaded: Int? = null, total: Int? = null) {
+        binding.channelLoadingOverlay.visibility = if (show) View.VISIBLE else View.GONE
+        if (!show) return
+
+        val loadedVal = (loaded ?: 0).coerceAtLeast(0)
+        val totalVal = (total ?: 0).coerceAtLeast(0)
+        if (totalVal > 0) {
+            val pct = ((loadedVal * 100f) / totalVal.toFloat()).toInt().coerceIn(0, 100)
+            binding.channelLoadingProgress.isIndeterminate = false
+            binding.channelLoadingProgress.progress = pct
+            binding.channelLoadingText.text = "频道加载中... $loadedVal/$totalVal"
+        } else {
+            binding.channelLoadingProgress.isIndeterminate = true
+            binding.channelLoadingText.text = "频道加载中..."
+        }
     }
 
     // JS interface for receiving data from the web page
@@ -93,10 +116,11 @@ class MainActivity : AppCompatActivity() {
                     webChannelsMap[srcId] = channels
                     webPageLoadedSet.add(srcId)
 
-                    if (currentJsKey == JsKey.YIBA) {
+                    if (JsKey.usesWebChannelList(currentJsKey)) {
                         channelAdapter.setChannels(channels)
                         channelAdapter.setFocused(0)
                         channelAdapter.setPlaying(0)
+                        setChannelListLoading(false)
                         focusedChIdx = 0
                         playingChIdx = 0
                         playingSrcIdx = activeSrcIdx
@@ -113,7 +137,36 @@ class MainActivity : AppCompatActivity() {
                     }
                     Log.d("MainActivity", "Web channel list received for $srcId: ${channels.size} items")
                 } catch (e: Exception) {
+                    setChannelListLoading(false)
                     Log.e("MainActivity", "Failed to parse channel list", e)
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun onChannelLoadProgress(loaded: Int, total: Int) {
+            runOnUiThread {
+                if (!JsKey.usesWebChannelList(currentJsKey) || isWebChannelPageLoaded()) return@runOnUiThread
+                setChannelListLoading(true, loaded = loaded, total = total)
+            }
+        }
+
+        @JavascriptInterface
+        fun onFamelackLayoutReady() {
+            runOnUiThread {
+                if (currentJsKey == JsKey.FAMELACK) {
+                    // If user just opened sidebar manually, don't auto-collapse immediately.
+                    val now = System.currentTimeMillis()
+                    if (sidebarVisible && now < famelackManualSidebarOpenUntilMs) {
+                        return@runOnUiThread
+                    }
+                    setSidebarVisible(false)
+                    binding.webView.postDelayed({
+                        binding.webView.evaluateJavascript(
+                            "typeof TVB_enterFullscreen==='function'&&TVB_enterFullscreen()",
+                            null
+                        )
+                    }, 300)
                 }
             }
         }
@@ -238,7 +291,45 @@ class MainActivity : AppCompatActivity() {
             onPageFinished  = { url -> onWebPageReady(url) },
             onError         = { msg -> showLoading(false); showErrorMessage(msg) }
         )
-        binding.webView.webChromeClient = TvWebChromeClient()
+        binding.webView.webChromeClient = TvWebChromeClient(fullscreenHost = object : TvWebChromeClient.FullscreenHost {
+            override fun onShowFullscreen(view: View, callback: WebChromeClient.CustomViewCallback) {
+                if (fullscreenView != null) {
+                    callback.onCustomViewHidden()
+                    return
+                }
+                fullscreenView = view
+                view.setBackgroundColor(android.graphics.Color.BLACK)
+                binding.rootLayout.addView(
+                    view,
+                    FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.MATCH_PARENT
+                    )
+                )
+                binding.webView.visibility = View.GONE
+                binding.sidebar.visibility = View.GONE
+                binding.nowBar.visibility = View.GONE
+                binding.menuHint.visibility = View.GONE
+                hideSystemUI()
+            }
+
+            override fun onHideFullscreen() {
+                fullscreenView?.let { v ->
+                    if (v.parent === binding.rootLayout) {
+                        binding.rootLayout.removeView(v)
+                    }
+                }
+                fullscreenView = null
+                binding.webView.visibility = View.VISIBLE
+                binding.menuHint.visibility = View.VISIBLE
+                if (currentJsKey == JsKey.FAMELACK) {
+                    binding.nowBar.alpha = 0f
+                } else {
+                    binding.nowBar.visibility = View.VISIBLE
+                }
+                hideSystemUI()
+            }
+        })
         binding.webView.addJavascriptInterface(TvBridgeInterface(), "Android")
 
         if (BuildConfig.DEBUG) {
@@ -248,6 +339,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun onWebPageReady(url: String) {
         showLoading(false)
+        if (JsKey.usesWebChannelList(currentJsKey) && !isWebChannelPageLoaded()) {
+            setChannelListLoading(true, loaded = 0, total = 0)
+        }
         val js = JsInjector.getJs(currentJsKey)
         binding.webView.evaluateJavascript(js, null)
         Log.d("MainActivity", "JS injected for $url (key=$currentJsKey)")
@@ -283,9 +377,12 @@ class MainActivity : AppCompatActivity() {
         currentJsKey = sources[idx].jsKey
 
         sourceTabAdapter.setActive(idx)
+        scrollSourceTabIntoView(idx)
 
         val src = sources[idx]
         val channels = getActiveChannels()
+        val waitingWebChannels = JsKey.usesWebChannelList(currentJsKey) && !webPageLoadedSet.contains(src.id)
+        setChannelListLoading(waitingWebChannels)
         channelAdapter.setChannels(channels)
         channelAdapter.setFocused(0)
         channelAdapter.setPlaying(
@@ -297,8 +394,12 @@ class MainActivity : AppCompatActivity() {
         )
         binding.channelListRv.scrollToPosition(0)
 
-        // YIBA sources: auto-load the page when switching to a new tab
-        if (currentJsKey == JsKey.YIBA && !webPageLoadedSet.contains(src.id)) {
+        if (currentJsKey != JsKey.FAMELACK && !sidebarVisible) {
+            setSidebarVisible(true)
+        }
+
+        // Web-channel sources: auto-load the page when switching to a new tab
+        if (JsKey.usesWebChannelList(currentJsKey) && !webPageLoadedSet.contains(src.id)) {
             selectChannel(0)
         }
     }
@@ -323,14 +424,14 @@ class MainActivity : AppCompatActivity() {
         binding.nowName.text    = ch.channelNum
         binding.nowProg.text    = ch.name
 
-        if (isYibaPageLoaded()) {
+        if (isWebChannelPageLoaded()) {
             // Page already loaded: switch channel via JS
             binding.webView.evaluateJavascript("TVB_select($idx)", null)
         } else {
             // Normal flow or first load: load URL
             showError(false)
             showLoading(true)
-            val url = if (currentJsKey == JsKey.YIBA) {
+            val url = if (JsKey.usesWebChannelList(currentJsKey)) {
                 src.channels.firstOrNull()?.url ?: ch.url
             } else {
                 ch.url
@@ -443,7 +544,7 @@ class MainActivity : AppCompatActivity() {
                         channelAdapter.setFocused(focusedChIdx)
                         scrollChannelIntoView(focusedChIdx)
                     }
-                } else if (currentJsKey == JsKey.YIBA) {
+                } else if (JsKey.usesWebChannelList(currentJsKey)) {
                     if (focusedChIdx > 0) {
                         focusedChIdx--
                         playingChIdx = focusedChIdx
@@ -470,7 +571,7 @@ class MainActivity : AppCompatActivity() {
                         channelAdapter.setFocused(focusedChIdx)
                         scrollChannelIntoView(focusedChIdx)
                     }
-                } else if (currentJsKey == JsKey.YIBA) {
+                } else if (JsKey.usesWebChannelList(currentJsKey)) {
                     if (focusedChIdx < channels.size - 1) {
                         focusedChIdx++
                         playingChIdx = focusedChIdx
@@ -524,20 +625,31 @@ class MainActivity : AppCompatActivity() {
 
             // ── Menu: toggle sidebar ─────────────────────────────────────────
             KeyEvent.KEYCODE_MENU -> {
+                if (!sidebarVisible && currentJsKey == JsKey.FAMELACK) {
+                    famelackManualSidebarOpenUntilMs = System.currentTimeMillis() + 8_000L
+                }
                 setSidebarVisible(!sidebarVisible)
                 true
             }
 
-            // ── Back: toggle sidebar / double-press to exit ─────────────
+            // ── Back: exit HTML fullscreen / toggle sidebar / double-press exit ─
             KeyEvent.KEYCODE_BACK -> {
-                val now = System.currentTimeMillis()
-                if (now - lastBackPressMs < 2_000L) {
-                    finish()
+                if (fullscreenView != null) {
+                    (binding.webView.webChromeClient as? TvWebChromeClient)?.dismissCustomView()
+                    true
                 } else {
-                    lastBackPressMs = now
-                    setSidebarVisible(!sidebarVisible)
+                    val now = System.currentTimeMillis()
+                    if (now - lastBackPressMs < 2_000L) {
+                        finish()
+                    } else {
+                        lastBackPressMs = now
+                        if (!sidebarVisible && currentJsKey == JsKey.FAMELACK) {
+                            famelackManualSidebarOpenUntilMs = now + 8_000L
+                        }
+                        setSidebarVisible(!sidebarVisible)
+                    }
+                    true
                 }
-                true
             }
 
             // ── OK on error screen: retry ────────────────────────────────────
@@ -572,6 +684,20 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun scrollSourceTabIntoView(position: Int) {
+        val rv = binding.sourceTabsRv
+        rv.post {
+            val lm = rv.layoutManager as? LinearLayoutManager ?: return@post
+            val first = lm.findFirstVisibleItemPosition()
+            val last = lm.findLastVisibleItemPosition()
+            if (position in first..last) return@post
+
+            // Center selected source tab when possible.
+            val offset = (rv.width * 0.3f).toInt()
+            lm.scrollToPositionWithOffset(position, offset)
+        }
+    }
+
     private fun showLoading(show: Boolean) {
         binding.loadingProgress.visibility = if (show) View.VISIBLE else View.GONE
     }
@@ -579,6 +705,7 @@ class MainActivity : AppCompatActivity() {
     private fun showError(show: Boolean) {
         errorShown = show
         binding.errorLayout.visibility = if (show) View.VISIBLE else View.GONE
+        if (show) setChannelListLoading(false)
     }
 
     private fun showErrorMessage(msg: String) {
@@ -589,7 +716,7 @@ class MainActivity : AppCompatActivity() {
     private fun retryCurrentChannel() {
         if (playingSrcIdx >= 0 && playingChIdx >= 0) {
             showError(false)
-            if (isYibaPageLoaded()) {
+            if (isWebChannelPageLoaded()) {
                 binding.webView.evaluateJavascript("TVB_select($playingChIdx)", null)
             } else {
                 val ch = sources.getOrNull(playingSrcIdx)?.channels?.getOrNull(playingChIdx) ?: return

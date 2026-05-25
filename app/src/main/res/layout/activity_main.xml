@@ -122,17 +122,51 @@
                 android:textColor="@color/text_disabled"
                 android:textSize="11sp" />
 
-            <!-- Channel list RecyclerView -->
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/channelListRv"
+            <!-- Channel list + loading overlay -->
+            <FrameLayout
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
-                android:layout_weight="1"
-                android:scrollbars="none"
-                android:focusable="true"
-                android:focusableInTouchMode="true"
-                android:descendantFocusability="blocksDescendants"
-                android:overScrollMode="never" />
+                android:layout_weight="1">
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/channelListRv"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:scrollbars="none"
+                    android:focusable="true"
+                    android:focusableInTouchMode="true"
+                    android:descendantFocusability="blocksDescendants"
+                    android:overScrollMode="never" />
+
+                <LinearLayout
+                    android:id="@+id/channelLoadingOverlay"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:visibility="gone"
+                    android:background="#22000000">
+
+                    <ProgressBar
+                        android:id="@+id/channelLoadingProgress"
+                        style="@android:style/Widget.ProgressBar.Horizontal"
+                        android:layout_width="210dp"
+                        android:layout_height="10dp"
+                        android:max="100"
+                        android:progress="0"
+                        android:indeterminate="true"
+                        android:progressTint="@color/accent" />
+
+                    <TextView
+                        android:id="@+id/channelLoadingText"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:text="频道加载中..."
+                        android:textColor="@color/text_hint"
+                        android:textSize="12sp" />
+                </LinearLayout>
+            </FrameLayout>
 
             <!-- Footer hints -->
             <LinearLayout

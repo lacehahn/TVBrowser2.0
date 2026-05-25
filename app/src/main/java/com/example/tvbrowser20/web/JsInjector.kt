@@ -14,10 +14,11 @@ import com.example.tvbrowser20.data.JsKey
 object JsInjector {
 
     fun getJs(jsKey: String): String = when (jsKey) {
-        JsKey.NONE  -> ""
-        JsKey.CCTV  -> CCTV_JS
-        JsKey.YIBA  -> YIBA_JS
-        else        -> DEFAULT_JS
+        JsKey.NONE     -> ""
+        JsKey.CCTV     -> CCTV_JS
+        JsKey.YIBA     -> YIBA_JS
+        JsKey.FAMELACK -> FAMELACK_JS
+        else           -> DEFAULT_JS
     }
 
     // ── Default: works for most single-video pages ────────────────────────────
@@ -274,6 +275,391 @@ object JsInjector {
   }
 
   setTimeout(waitForItems, 800);
+})();
+""".trimIndent()
+
+    // ── Famelack — channel list + .video-player-wrapper 铺满 (0,0)，不隐藏页面其它元素 ─
+    // 勿对 <video> 使用 object-fit / flex；勿改 <video> 的 position。
+    private val FAMELACK_JS = """
+(function() {
+  'use strict';
+
+  var currentIdx = -1;
+  var TAG = '[TVBrowser/Famelack]';
+  var YOUTUBE_FULLSCREEN_DELAY_MS = 5000;
+  var youtubeDelayTimer = null;
+
+  function clearYoutubeDelayTimer() {
+    if (youtubeDelayTimer) {
+      clearTimeout(youtubeDelayTimer);
+      youtubeDelayTimer = null;
+    }
+  }
+
+  function isYoutubeActive() {
+    var yt = document.getElementById('youtube-player');
+    if (!yt) return false;
+    var st = getComputedStyle(yt);
+    return st.display !== 'none' && yt.getBoundingClientRect().width > 80;
+  }
+
+  function hideYoutubeRightSidebar() {
+    ['sidebar-items', 'sidebar-header'].forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) el.style.setProperty('display', 'none', 'important');
+    });
+    document.querySelectorAll('#global-header, .global-header, header.global-header')
+      .forEach(function(el) {
+        el.style.setProperty('display', 'none', 'important');
+      });
+  }
+
+  function getSidebar() {
+    return document.getElementById('sidebar-items');
+  }
+
+  function getChannelEntries() {
+    var sidebar = getSidebar();
+    if (!sidebar) return [];
+    return Array.prototype.slice.call(
+      sidebar.querySelectorAll('.sidebar-entry[data-channel-name]:not(.country-item)')
+    );
+  }
+
+  /**
+   * 仅将 .video-player-wrapper 铺满视口并固定在左上角 (0,0)。
+   * 不隐藏、不删除页面其它 DOM；只调整 wrapper 及其内部播放器尺寸。
+   */
+  function expandPlayerWrapperFullscreen() {
+    var wrapper = document.querySelector('#video-container .video-player-wrapper') ||
+                  document.querySelector('.video-player-wrapper');
+    if (!wrapper) {
+      console.log(TAG, 'no .video-player-wrapper');
+      return;
+    }
+
+    var vw = window.innerWidth || document.documentElement.clientWidth || 1280;
+    var vh = window.innerHeight || document.documentElement.clientHeight || 720;
+
+    // Keep original DOM hierarchy; enforce fullscreen styles with !important.
+    wrapper.style.setProperty('position', 'fixed', 'important');
+    wrapper.style.setProperty('top', '0px', 'important');
+    wrapper.style.setProperty('left', '0px', 'important');
+    wrapper.style.setProperty('right', '0px', 'important');
+    wrapper.style.setProperty('bottom', '0px', 'important');
+    wrapper.style.setProperty('width', '100vw', 'important');
+    wrapper.style.setProperty('height', '100vh', 'important');
+    wrapper.style.setProperty('z-index', '2147483646', 'important');
+    wrapper.style.setProperty('margin', '0', 'important');
+    wrapper.style.setProperty('padding', '0', 'important');
+    wrapper.style.setProperty('transform', 'none', 'important');
+    wrapper.style.setProperty('background', '#000', 'important');
+
+    var vjs = wrapper.querySelector('#video-player') || document.getElementById('video-player');
+    if (vjs) {
+      vjs.classList.remove('video-player-dimensions');
+      vjs.style.setProperty('width', '100%', 'important');
+      vjs.style.setProperty('height', '100%', 'important');
+    }
+
+    var yt = wrapper.querySelector('#youtube-player') || document.getElementById('youtube-player');
+    if (yt) {
+      yt.style.setProperty('width', '100%', 'important');
+      yt.style.setProperty('height', '100%', 'important');
+    }
+
+    window.scrollTo(0, 0);
+    triggerPlayerResize();
+    setTimeout(triggerPlayerResize, 500);
+    setTimeout(triggerPlayerResize, 1500);
+    console.log(TAG, '.video-player-wrapper at 0,0', vw + 'x' + vh);
+  }
+
+  function expandPlayerLayout() {
+    expandPlayerWrapperFullscreen();
+  }
+
+  function triggerPlayerResize() {
+    var vw = window.innerWidth || 1280;
+    var vh = window.innerHeight || 720;
+    try {
+      if (typeof videojs !== 'undefined') {
+        var p = videojs.getPlayer('video-player');
+        if (p) {
+          if (typeof p.dimensions === 'function') p.dimensions(vw, vh);
+          if (typeof p.trigger === 'function') p.trigger('resize');
+        }
+      }
+    } catch (e) {}
+  }
+
+  function notifyAndroidHideSidebar() {
+    try {
+      Android.onFamelackLayoutReady();
+    } catch (e) {}
+  }
+
+  function requestElementFullscreen(el) {
+    if (!el) return false;
+    var fn = el.requestFullscreen ||
+             el.webkitRequestFullscreen ||
+             el.webkitEnterFullscreen ||
+             el.mozRequestFullScreen ||
+             el.msRequestFullscreen;
+    if (!fn) return false;
+    try {
+      var r = fn.call(el);
+      if (r && r.catch) r.catch(function() {});
+      console.log(TAG, 'requestFullscreen ->', el.id || el.tagName);
+      return true;
+    } catch (e) {
+      console.log(TAG, 'requestFullscreen failed', e);
+      return false;
+    }
+  }
+
+  function tryVideoJsFullscreen() {
+    try {
+      if (typeof videojs !== 'undefined') {
+        var p = videojs.getPlayer('video-player');
+        if (p && typeof p.requestFullscreen === 'function') {
+          if (!p.isFullscreen || !p.isFullscreen()) p.requestFullscreen();
+          return true;
+        }
+      }
+    } catch (e) {}
+    return false;
+  }
+
+  function isMediaReady() {
+    var video = document.getElementById('video-player_html5_api') ||
+                document.querySelector('#video-player video');
+    if (video) {
+      var src = (video.currentSrc || video.src || '').trim();
+      if (video.readyState > 0 && src) return true;
+    }
+    var vjs = document.getElementById('video-player');
+    if (vjs && (vjs.classList.contains('vjs-playing') || vjs.classList.contains('vjs-has-started'))) {
+      return true;
+    }
+    if (isYoutubeActive()) return true;
+    return false;
+  }
+
+  function enterTvFullscreen() {
+    if (isYoutubeActive()) {
+      hideYoutubeRightSidebar();
+      expandPlayerWrapperFullscreen();
+      notifyAndroidHideSidebar();
+      return;
+    }
+    expandPlayerWrapperFullscreen();
+    notifyAndroidHideSidebar();
+  }
+
+  function applyTvFullscreen() {
+    if (isYoutubeActive()) {
+      hideYoutubeRightSidebar();
+      expandPlayerWrapperFullscreen();
+      notifyAndroidHideSidebar();
+      return;
+    }
+    var wrapper = document.querySelector('.video-player-wrapper');
+    if (!wrapper) return;
+    if (requestElementFullscreen(wrapper)) return;
+    if (tryVideoJsFullscreen()) return;
+    var container = document.getElementById('video-container');
+    if (container && requestElementFullscreen(container)) return;
+    var btn = document.querySelector('#video-player .vjs-fullscreen-control');
+    if (btn) btn.click();
+  }
+
+  function waitAndEnterFullscreen() {
+    clearYoutubeDelayTimer();
+    var tries = 0;
+    function tick() {
+      if (isMediaReady() || tries++ >= 50) {
+        if (isYoutubeActive()) {
+          console.log(TAG, 'youtube detected, wait 5s before layout adjust');
+          youtubeDelayTimer = setTimeout(function() {
+            youtubeDelayTimer = null;
+            hideYoutubeRightSidebar();
+            expandPlayerWrapperFullscreen();
+            notifyAndroidHideSidebar();
+          }, YOUTUBE_FULLSCREEN_DELAY_MS);
+        } else {
+          enterTvFullscreen();
+        }
+        return;
+      }
+      setTimeout(tick, 300);
+    }
+    setTimeout(tick, 500);
+  }
+
+  function clickEntry(entry) {
+    var btn = entry.querySelector('button.video-link');
+    (btn || entry).click();
+  }
+
+  function entryRowHeight() {
+    var rowH = 64;
+    try {
+      var style = getComputedStyle(document.documentElement);
+      var key = window.matchMedia('(max-width: 600px)').matches
+        ? '--sidebar-entry-height-mobile'
+        : '--sidebar-entry-height-desktop';
+      var raw = style.getPropertyValue(key).trim();
+      if (raw.endsWith('rem')) rowH = parseFloat(raw) * (parseFloat(style.fontSize) || 16);
+      else if (raw) rowH = parseFloat(raw) || rowH;
+    } catch (e) {}
+    return rowH;
+  }
+
+  function scrollToVirtualIndex(idx, done) {
+    var sidebar = getSidebar();
+    if (!sidebar) { done(null); return; }
+
+    var rowH = entryRowHeight();
+    sidebar.scrollTop = Math.max(0, idx * rowH - sidebar.clientHeight / 3);
+
+    var tries = 0;
+    function find() {
+      var el = sidebar.querySelector('[data-index="' + idx + '"]') ||
+               sidebar.querySelector('[data-virtual-index="' + idx + '"]');
+      if (el) return done(el);
+      var entries = getChannelEntries();
+      if (entries[idx]) return done(entries[idx]);
+      if (tries++ < 25) setTimeout(find, 120);
+      else done(null);
+    }
+    setTimeout(find, 150);
+  }
+
+  function selectByIndex(idx) {
+    scrollToVirtualIndex(idx, function(entry) {
+      if (!entry) {
+        console.log(TAG, 'entry not found for idx=' + idx);
+        return;
+      }
+      clearYoutubeDelayTimer();
+      currentIdx = idx;
+      clickEntry(entry);
+      console.log(TAG, 'selected idx=' + idx, entry.dataset.channelName || '');
+      waitAndEnterFullscreen();
+    });
+  }
+
+  function collectAllChannelNames(done) {
+    var sidebar = getSidebar();
+    if (!sidebar) { done([]); return; }
+
+    var names = [];
+    var seen = {};
+    var lastScroll = -1;
+    var rounds = 0;
+    var rowH = entryRowHeight();
+    var initialTotal = 0;
+
+    function estimateInitialTotal() {
+      // Prefer virtualized list container height / row height (available at startup).
+      var vlist = sidebar.querySelector('.virtualized-list');
+      if (vlist) {
+        var h = parseFloat((vlist.style.height || '').replace('px', ''));
+        if (!isNaN(h) && h > 0 && rowH > 0) {
+          return Math.max(1, Math.round(h / rowH));
+        }
+      }
+      // Fallback to max index visible at startup.
+      return estimateTotal();
+    }
+
+    function estimateTotal() {
+      var maxIdx = -1;
+      sidebar.querySelectorAll('.sidebar-entry[data-index], .sidebar-entry[data-virtual-index]')
+        .forEach(function(el) {
+          var raw = el.getAttribute('data-index') || el.getAttribute('data-virtual-index');
+          var n = parseInt(raw, 10);
+          if (!isNaN(n) && n > maxIdx) maxIdx = n;
+        });
+      if (maxIdx >= 0) return maxIdx + 1;
+      return getChannelEntries().length;
+    }
+
+    function reportProgress(loaded, total) {
+      try { Android.onChannelLoadProgress(loaded, total); } catch (e) {}
+    }
+
+    function pass() {
+      getChannelEntries().forEach(function(el) {
+        var name = el.dataset.channelName;
+        if (name && !seen[name]) {
+          seen[name] = true;
+          names.push(name);
+        }
+      });
+      var total = Math.max(initialTotal, estimateTotal());
+      reportProgress(names.length, total);
+
+      if (sidebar.scrollTop === lastScroll && rounds > 4) {
+        sidebar.scrollTop = 0;
+        reportProgress(names.length, names.length);
+        return done(names);
+      }
+      lastScroll = sidebar.scrollTop;
+      rounds++;
+      if (rounds > 120) {
+        sidebar.scrollTop = 0;
+        reportProgress(names.length, names.length);
+        return done(names);
+      }
+      sidebar.scrollTop += Math.max(sidebar.clientHeight, rowH * 3);
+      setTimeout(pass, 120);
+    }
+
+    initialTotal = estimateInitialTotal();
+    reportProgress(0, initialTotal);
+    sidebar.scrollTop = 0;
+    setTimeout(pass, 200);
+  }
+
+  function sendChannelList(names) {
+    try {
+      Android.onChannelList(JSON.stringify(names));
+      console.log(TAG, 'sent ' + names.length + ' channels to Android');
+    } catch (e) {
+      console.log(TAG, 'Android bridge not available');
+    }
+  }
+
+  window.TVB_select = function(idx) { selectByIndex(idx); };
+  window.TVB_getIdx = function() { return currentIdx; };
+  window.TVB_getCount = function() { return getChannelEntries().length; };
+
+  function init() {
+    collectAllChannelNames(function(names) {
+      if (names.length > 0) {
+        sendChannelList(names);
+        selectByIndex(0);
+      } else {
+        console.log(TAG, 'no channels found in sidebar');
+      }
+    });
+  }
+
+  window.TVB_trimChrome = function() { expandPlayerLayout(); notifyAndroidHideSidebar(); };
+  window.TVB_enterFullscreen = function() { applyTvFullscreen(); };
+
+  var waitItems = 0;
+  function waitForItems() {
+    if (getChannelEntries().length > 0) {
+      init();
+    } else if (waitItems++ < 40) {
+      setTimeout(waitForItems, 500);
+    }
+  }
+
+  setTimeout(waitForItems, 1200);
 })();
 """.trimIndent()
 }
